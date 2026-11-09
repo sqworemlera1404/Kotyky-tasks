@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Котики-завдання</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#fff3f6;--card:#fff;--ink:#4a3340;--mut:#9a7f8c;--pink:#ff8fb1;--pink2:#ffd6e3;--green:#6cc79a;--warn:#ff9f6b;--line:#f6dbe5}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#2a1f27;--card:#3a2b35;--ink:#fbe9f0;--mut:#c4a5b4;--pink:#ff8fb1;--pink2:#5a3445;--green:#6cc79a;--warn:#ff9f6b;--line:#4d3a46}}
+:root[data-theme="dark"]{--bg:#2a1f27;--card:#3a2b35;--ink:#fbe9f0;--mut:#c4a5b4;--pink:#ff8fb1;--pink2:#5a3445;--line:#4d3a46}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Nunito",system-ui,-apple-system,sans-serif;padding:16px;max-width:560px;margin:auto}
+h1{font-size:26px;margin:8px 0 2px}
+.sub{color:var(--mut);margin:0 0 16px;font-size:14px}
+h2{font-size:16px;margin:22px 0 8px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+.card{background:var(--card);border:2px solid var(--line);border-radius:18px;padding:14px;margin-bottom:10px}
+.card.done{border-color:var(--green)}
+.card.late{border-color:var(--warn)}
+.top{display:flex;gap:10px;align-items:center}
+.cat{font-size:30px}
+.name{font-weight:800;font-size:17px}
+.meta{font-size:13px;color:var(--mut)}
+.tag{display:inline-block;padding:2px 9px;border-radius:99px;background:var(--pink2);font-size:12px;font-weight:700;margin-right:4px}
+.tag.w{background:var(--warn);color:#fff}
+.btns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+button{font:inherit;font-weight:800;border:0;border-radius:12px;padding:10px 14px;cursor:pointer;background:var(--pink);color:#fff}
+button.ok{background:var(--green)}
+button.ghost{background:var(--pink2);color:var(--ink)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.lb{font-size:14px;color:var(--mut)}.ed{margin-left:auto}.del,.ed{background:none;color:var(--mut);padding:4px 8px;font-size:18px}
+form{display:grid;gap:8px}
+input,select{font:inherit;padding:10px;border-radius:12px;border:2px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+.empty{text-align:center;color:var(--mut);padding:18px}
+</style>
+</head>
+<body>
+<h1>🐱 Котики-завдання</h1>
+<p class="sub" id="date"></p>
+<p class="sub" id="st">☁️ З’єднуюсь…</p>
+<h2>Сьогодні</h2>
+<div id="today"></div>
+<h2>Далі</h2>
+<div id="later"></div>
+<h2>Нове завдання 😺</h2>
+<div class="card">
+<form id="f">
+<input id="n" placeholder="Назва завдання" required>
+<label class="lb">Повторювати кожні <input id="p" type="number" min="1" max="365" value="1" style="width:80px;display:inline-block"> дн. (1 — щодня, 2 — через день)</label>
+<select id="s"><option value="Діана">Починає Діана</option><option value="Лера">Починає Лера</option></select>
+<button id="sb">Додати 🐾</button>
+</form>
+</div>
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import{getFirestore,doc,onSnapshot,setDoc}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+const firebaseConfig={
+  apiKey:"AIzaSyDAfJpyZv1peA6vAbBsjluO4N1haBA40_s",
+  authDomain:"kotyky-tasks.firebaseapp.com",
+  projectId:"kotyky-tasks",
+  storageBucket:"kotyky-tasks.firebasestorage.app",
+  messagingSenderId:"520383659122",
+  appId:"1:520383659122:web:94f7e6d458c0c0066ed6eb"
+};
+const KEY="kotyky-v1";
+const fmt=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const parse=s=>{const[a,b,c]=s.split("-");return new Date(+a,+b-1,+c)};
+const add=(s,n)=>{const d=parse(s);d.setDate(d.getDate()+n);return fmt(d)};
+const wk=s=>{const g=parse(s).getDay();return g>0&&g<6};
+const nextWk=s=>{while(!wk(s))s=add(s,1);return s};
+const pretty=s=>parse(s).toLocaleDateString("uk-UA",{weekday:"short",day:"numeric",month:"short"});
+const today=()=>fmt(new Date());
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!S||!S.tasks){const t=today();S={tasks:[
+{id:1,name:"Нагодувати котика",period:1,mode:"rotate",who:"Діана",due:nextWk(t),done:false,doneOn:""},
+{id:2,name:"Винести сміття",period:2,mode:"rotate",who:"Лера",due:nextWk(t),done:false,doneOn:""}]}}
+let dref=null;
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(dref){setDoc(dref,{tasks:S.tasks}).catch(()=>setSt("err"))}}
+function norm(){const t=today();S.tasks.forEach(x=>{if(x.done&&x.doneOn<t&&x.mode==="rotate"){x.done=false}})}
+function visible(x,t){return x.due<=t&&(x.mode==="parents"||wk(t))}
+function card(x,t,showBtns){
+if(editId===x.id)return editCard(x);
+const late=x.due<t;
+const el=document.createElement("div");
+el.className="card"+(x.done?" done":late?" late":"");
+const who=x.mode==="parents"?"👪 Батьки":(x.who==="Діана"?"🐱 Діана":"😸 Лера");
+el.innerHTML=`<div class="top"><div class="cat">${x.mode==="parents"?"😺":"🐈"}</div><div><div class="name"></div><div class="meta"><span class="tag">${who}</span><span class="tag">${x.period===1?"щодня":x.period===2?"через день":"кожні "+x.period+" дн."}</span>${x.mode==="parents"?'<span class="tag">необов’язково</span>':""}${late&&showBtns?'<span class="tag w">перенесено</span>':""}${showBtns?"":" "+pretty(x.mode==="rotate"?nextWk(x.due):x.due)}</div></div><button class="ed" title="Змінити">✏️</button><button class="del" title="Видалити">✕</button></div>`;
+el.querySelector(".name").textContent=x.name;
+el.querySelector(".ed").onclick=()=>{editId=x.id;render()};
+const dl=el.querySelector(".del");let armed=false;dl.onclick=()=>{if(!armed){armed=true;dl.textContent="Точно? 🗑️";dl.style.color="var(--warn)";dl.style.fontWeight="800";dl.style.fontSize="14px";setTimeout(()=>{if(armed&&dl.isConnected){armed=false;dl.textContent="✕";dl.style.cssText=""}},3000)}else{S.tasks=S.tasks.filter(y=>y.id!==x.id);save();render()}};
+if(showBtns){
+const b=document.createElement("div");b.className="btns";
+const d=document.createElement("button");
+d.textContent=x.done?"✓ Виконано":"Виконано";d.className=x.done?"ghost":"";
+d.onclick=()=>{
+if(x.mode==="parents"){x.due=add(t,x.period);}
+else{x.done=!x.done;x.doneOn=x.done?t:"";}
+save();render()};
+b.appendChild(d);
+if(x.mode==="rotate"){
+const c=document.createElement("button");
+c.textContent="Перевірено батьками";c.className="ok";c.disabled=!x.done;
+c.onclick=()=>{x.who=x.who==="Діана"?"Лера":"Діана";x.due=nextWk(add(t,x.period));x.done=false;x.doneOn="";save();render()};
+b.appendChild(c)}
+el.appendChild(b)}
+return el}
+function editCard(x){
+const el=document.createElement("div");el.className="card";
+el.innerHTML=`<form class="ef"><input class="en" required><label class="lb">Повторювати кожні <input class="ep" type="number" min="1" max="365" style="width:80px;display:inline-block"> дн.</label>${x.mode==="rotate"?'<select class="ew"><option value="Діана">Зараз черга: Діана</option><option value="Лера">Зараз черга: Лера</option></select>':""}<div class="btns"><button>Зберегти</button><button type="button" class="ghost ec">Скасувати</button></div></form>`;
+el.querySelector(".en").value=x.name;el.querySelector(".ep").value=x.period;
+const w=el.querySelector(".ew");if(w)w.value=x.who;
+el.querySelector(".ec").onclick=()=>{editId=null;render()};
+el.querySelector(".ef").onsubmit=e=>{e.preventDefault();x.name=el.querySelector(".en").value.trim()||x.name;x.period=Math.max(1,parseInt(el.querySelector(".ep").value)||1);if(w)x.who=w.value;editId=null;save();render()};
+return el}
+function render(){
+norm();
+const t=today();
+document.getElementById("date").textContent=pretty(t)+(wk(t)?"":" · вихідні, дівчатка відпочивають 🐾");
+const A=document.getElementById("today"),B=document.getElementById("later");
+A.innerHTML="";B.innerHTML="";
+const v=S.tasks.filter(x=>visible(x,t)),r=S.tasks.filter(x=>!visible(x,t));
+v.forEach(x=>A.appendChild(card(x,t,true)));
+r.forEach(x=>B.appendChild(card(x,t,false)));
+if(!v.length)A.innerHTML='<div class="empty">На сьогодні все! 😻</div>';
+if(!r.length)B.innerHTML='<div class="empty">Порожньо</div>'}
+const s=document.getElementById("s");let editId=null;
+document.getElementById("f").onsubmit=e=>{
+e.preventDefault();
+const mode="rotate";
+S.tasks.push({id:Date.now(),name:document.getElementById("n").value.trim(),period:Math.max(1,parseInt(document.getElementById("p").value)||1),mode,who:mode==="rotate"?s.value:"Батьки",due:mode==="rotate"?nextWk(today()):today(),done:false,doneOn:""});
+document.getElementById("n").value="";save();render()};
+render();
+function setSt(k){document.getElementById("st").textContent=k==="ok"?"☁️ Спільний список підключено":k==="err"?"⚠️ Немає зв’язку з базою":"☁️ З’єднуюсь…"}
+try{
+const app=initializeApp(firebaseConfig);
+dref=doc(getFirestore(app),"family","tasks");
+onSnapshot(dref,snap=>{
+if(snap.exists()){const d=snap.data();if(editId===null&&Array.isArray(d.tasks)){S={tasks:d.tasks};render()}setSt("ok")}
+else if(!snap.metadata.fromCache){setDoc(dref,{tasks:S.tasks}).catch(()=>setSt("err"))}
+},()=>setSt("err"));
+}catch(e){setSt("err")}
+</script>
+</body>
+</html>
