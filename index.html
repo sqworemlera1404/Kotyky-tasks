@@ -33,6 +33,19 @@ button:disabled{opacity:.4;cursor:not-allowed}
 form{display:grid;gap:8px}
 input,select{font:inherit;padding:10px;border-radius:12px;border:2px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
 .empty{text-align:center;color:var(--mut);padding:18px}
+.ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ch b::first-letter{text-transform:uppercase}
+.ch button{padding:6px 14px;font-size:18px}
+.cg{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cw{text-align:center;font-size:12px;color:var(--mut);font-weight:800}
+.cd{border:2px solid var(--line);border-radius:10px;min-height:52px;padding:3px;cursor:pointer;font-size:13px}
+.cd.tod{border-color:var(--pink)}
+.cd.sel{background:var(--pink2)}
+.dots{display:flex;flex-wrap:wrap;gap:2px;margin-top:3px}
+.dots i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.leg{font-size:12px;color:var(--mut);margin:10px 0}
+.dh{font-weight:800;margin-top:14px;color:var(--pink)}
+.dl{padding:6px 0;border-top:1px solid var(--line);font-size:14px}
 </style>
 </head>
 <body>
@@ -43,6 +56,8 @@ input,select{font:inherit;padding:10px;border-radius:12px;border:2px solid var(-
 <div id="today"></div>
 <h2>Далі</h2>
 <div id="later"></div>
+<h2>Календар 📅</h2>
+<div class="card" id="cal"></div>
 <h2>Нове завдання 😺</h2>
 <div class="card">
 <form id="f">
@@ -53,8 +68,6 @@ input,select{font:inherit;padding:10px;border-radius:12px;border:2px solid var(-
 </form>
 </div>
 <script type="module">
-import{initializeApp}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import{getFirestore,doc,onSnapshot,setDoc}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 const firebaseConfig={
   apiKey:"AIzaSyDAfJpyZv1peA6vAbBsjluO4N1haBA40_s",
   authDomain:"kotyky-tasks.firebaseapp.com",
@@ -75,9 +88,10 @@ let S;
 try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 if(!S||!S.tasks){const t=today();S={tasks:[
 {id:1,name:"Нагодувати котика",period:1,mode:"rotate",who:"Діана",due:nextWk(t),done:false,doneOn:""},
-{id:2,name:"Винести сміття",period:2,mode:"rotate",who:"Лера",due:nextWk(t),done:false,doneOn:""}]}}
-let dref=null;
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(dref){setDoc(dref,{tasks:S.tasks}).catch(()=>setSt("err"))}}
+{id:2,name:"Винести сміття",period:2,mode:"rotate",who:"Лера",due:nextWk(t),done:false,doneOn:""}],log:[]}}
+if(!S.log)S.log=[];
+let dref=null,setDocF=null;
+function save(){S.log=S.log.slice(-600);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(dref&&setDocF){setDocF(dref,{tasks:S.tasks,log:S.log}).catch(()=>setSt("err"))}}
 function norm(){const t=today();S.tasks.forEach(x=>{if(x.done&&x.doneOn<t&&x.mode==="rotate"){x.done=false}})}
 function visible(x,t){return x.due<=t&&(x.mode==="parents"||wk(t))}
 function card(x,t,showBtns){
@@ -95,14 +109,14 @@ const b=document.createElement("div");b.className="btns";
 const d=document.createElement("button");
 d.textContent=x.done?"✓ Виконано":"Виконано";d.className=x.done?"ghost":"";
 d.onclick=()=>{
-if(x.mode==="parents"){x.due=add(t,x.period);}
-else{x.done=!x.done;x.doneOn=x.done?t:"";}
+if(x.mode==="parents"){S.log.push({k:x.id+"|"+t,d:t,n:x.name,w:"Батьки",v:true});x.due=add(t,x.period);}
+else{x.done=!x.done;if(x.done){x.doneOn=t;S.log=S.log.filter(l=>l.k!==x.id+"|"+t);S.log.push({k:x.id+"|"+t,d:t,n:x.name,w:x.who,v:false})}else{S.log=S.log.filter(l=>l.k!==x.id+"|"+x.doneOn);x.doneOn=""}}
 save();render()};
 b.appendChild(d);
 if(x.mode==="rotate"){
 const c=document.createElement("button");
 c.textContent="Перевірено батьками";c.className="ok";c.disabled=!x.done;
-c.onclick=()=>{x.who=x.who==="Діана"?"Лера":"Діана";x.due=nextWk(add(t,x.period));x.done=false;x.doneOn="";save();render()};
+c.onclick=()=>{const lg=S.log.find(l=>l.k===x.id+"|"+x.doneOn);if(lg)lg.v=true;x.who=x.who==="Діана"?"Лера":"Діана";x.due=nextWk(add(t,x.period));x.done=false;x.doneOn="";save();render()};
 b.appendChild(c)}
 el.appendChild(b)}
 return el}
@@ -124,23 +138,66 @@ const v=S.tasks.filter(x=>visible(x,t)),r=S.tasks.filter(x=>!visible(x,t));
 v.forEach(x=>A.appendChild(card(x,t,true)));
 r.forEach(x=>B.appendChild(card(x,t,false)));
 if(!v.length)A.innerHTML='<div class="empty">На сьогодні все! 😻</div>';
-if(!r.length)B.innerHTML='<div class="empty">Порожньо</div>'}
+if(!r.length)B.innerHTML='<div class="empty">Порожньо</div>';renderCal()}
 const s=document.getElementById("s");let editId=null;
+const esc=q=>String(q).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const WHO={"Діана":"#ff8fb1","Лера":"#7ab8ff","Батьки":"#ffc857"};
+let cm=new Date();cm=new Date(cm.getFullYear(),cm.getMonth(),1);let calSel=today();
+function plan(y,m){
+const t=today(),out=[],first=fmt(new Date(y,m,1)),last=fmt(new Date(y,m+1,0));
+S.tasks.forEach(x=>{
+const rot=x.mode==="rotate";let who=x.who,d=rot?nextWk(x.due):x.due;
+if(d<t)d=rot?nextWk(t):t;
+for(let n=0;d<=last&&n<800;n++){
+if(d>=first&&!(rot&&x.done&&d===t))out.push({d,n:x.name,w:rot?who:"Батьки",plan:1});
+who=who==="Діана"?"Лера":"Діана";d=rot?nextWk(add(d,x.period)):add(d,x.period)}});
+return out}
+function dotStyle(q){const c=WHO[q.w]||"#ccc";
+return q.plan?`border:2px solid ${c}`:q.v?`background:${c}`:`background:${c};border:2px solid var(--warn)`}
+function renderCal(){
+const y=cm.getFullYear(),m=cm.getMonth(),t=today(),first=new Date(y,m,1);
+const days=new Date(y,m+1,0).getDate(),off=(first.getDay()+6)%7,pref=fmt(first).slice(0,7);
+const by={};
+S.log.filter(l=>l.d.slice(0,7)===pref).forEach(l=>(by[l.d]=by[l.d]||[]).push(l));
+plan(y,m).forEach(p=>(by[p.d]=by[p.d]||[]).push(p));
+let h=`<div class="ch"><button class="ghost" id="cp">‹</button><b>${first.toLocaleDateString("uk-UA",{month:"long",year:"numeric"})}</b><button class="ghost" id="cn">›</button></div><div class="cg">`;
+["Пн","Вт","Ср","Чт","Пт","Сб","Нд"].forEach(w=>h+=`<div class="cw">${w}</div>`);
+for(let i=0;i<off;i++)h+="<div></div>";
+for(let d=1;d<=days;d++){
+const ds=fmt(new Date(y,m,d)),e=by[ds]||[];
+h+=`<div class="cd${ds===t?" tod":""}${ds===calSel?" sel":""}" data-d="${ds}"><span>${d}</span><div class="dots">${e.slice(0,8).map(q=>`<i style="${dotStyle(q)}"></i>`).join("")}</div></div>`}
+h+=`</div><div class="leg">🌸 Діана · 💙 Лера · 💛 батьки &nbsp;|&nbsp; ● зроблено · ○ треба зробити · з оранжевою рамкою — зроблено, але батьки ще не перевірили</div>`;
+let any=0;
+for(let d=1;d<=days;d++){const ds=fmt(new Date(y,m,d)),e=by[ds]||[];if(!e.length)continue;any=1;
+h+=`<div class="dh" id="d-${ds}">${pretty(ds)}${ds===t?" · сьогодні":""}</div>`;
+e.forEach(q=>{h+=`<div class="dl">${q.plan?"📅":q.v?"✅":"⏳"} <b>${esc(q.w)}</b> — ${esc(q.n)} <span class="meta">${q.plan?"· треба зробити":q.v?"· зроблено, перевірено ✓":"· зроблено, ще не перевірено"}</span></div>`})}
+if(!any)h+='<div class="empty">У цьому місяці поки нічого немає 😴</div>';
+const el=document.getElementById("cal");el.innerHTML=h;
+el.querySelectorAll(".cd").forEach(c=>c.onclick=()=>{calSel=c.dataset.d;renderCal();const g=document.getElementById("d-"+calSel);if(g)g.scrollIntoView({behavior:"smooth",block:"center"})});
+el.querySelector("#cp").onclick=()=>{cm=new Date(y,m-1,1);renderCal()};
+el.querySelector("#cn").onclick=()=>{cm=new Date(y,m+1,1);renderCal()}}
 document.getElementById("f").onsubmit=e=>{
 e.preventDefault();
 const mode="rotate";
 S.tasks.push({id:Date.now(),name:document.getElementById("n").value.trim(),period:Math.max(1,parseInt(document.getElementById("p").value)||1),mode,who:mode==="rotate"?s.value:"Батьки",due:mode==="rotate"?nextWk(today()):today(),done:false,doneOn:""});
 document.getElementById("n").value="";save();render()};
-render();
-function setSt(k){document.getElementById("st").textContent=k==="ok"?"☁️ Спільний список підключено":k==="err"?"⚠️ Немає зв’язку з базою":"☁️ З’єднуюсь…"}
-try{
+try{render()}catch(e){document.getElementById("st").textContent="⚠️ Помилка: "+e.message}
+function setSt(k,c){document.getElementById("st").textContent=k==="ok"?"☁️ Спільний список підключено":k==="err"?"⚠️ Немає зв’язку з базою"+(c?" ("+c+")":""):k==="slow"?"⚠️ Довго з’єднується: можливо, неправильний ключ":"☁️ З’єднуюсь…"}
+(async()=>{try{
+const B="https://www.gstatic.com/firebasejs/10.14.1/";
+const{initializeApp}=await import(B+"firebase-app.js");
+const{initializeFirestore,doc,onSnapshot,setDoc}=await import(B+"firebase-firestore.js");
+setDocF=setDoc;
 const app=initializeApp(firebaseConfig);
-dref=doc(getFirestore(app),"family","tasks");
-onSnapshot(dref,snap=>{
-if(snap.exists()){const d=snap.data();if(editId===null&&Array.isArray(d.tasks)){S={tasks:d.tasks};render()}setSt("ok")}
-else if(!snap.metadata.fromCache){setDoc(dref,{tasks:S.tasks}).catch(()=>setSt("err"))}
-},()=>setSt("err"));
-}catch(e){setSt("err")}
+const r=doc(initializeFirestore(app,{experimentalAutoDetectLongPolling:true}),"family","tasks");
+dref=r;
+let conn=0;setTimeout(()=>{if(!conn)setSt("slow")},8000);
+onSnapshot(r,snap=>{
+if(!snap.metadata.fromCache)conn=1;
+if(snap.exists()){const d=snap.data();if(editId===null&&Array.isArray(d.tasks)){S={tasks:d.tasks,log:Array.isArray(d.log)?d.log:[]};render()}setSt("ok")}
+else if(!snap.metadata.fromCache){setDoc(r,{tasks:S.tasks,log:S.log}).catch(()=>setSt("err"))}
+},er=>setSt("err",er&&er.code))
+}catch(e){setSt("err",e&&(e.code||e.message))}})();
 </script>
 </body>
 </html>
